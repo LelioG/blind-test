@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "@vitejs/plugin-react": "^6.0.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide-react": "^1.18.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "vite": "^8.0.16"
+  },
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "start": "node index.js",
+    "check": "npm run build && node --check index.js && node --check src/routes.js && node --check src/config.js && node --check src/state.js && node --check src/http.js && node --check src/utils.js && node --check src/spotify.js && node --check src/deezer.js"
+  }
+}
