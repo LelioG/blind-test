@@ -59,8 +59,8 @@ Pour Deezer :
 Cloner le projet :
 
 ```bash
-git clone https://github.com/TON-PSEUDO/NOM-DU-REPO.git
-cd NOM-DU-REPO
+git clone https://github.com/LelioG/blind-test
+cd blind-test
 ```
 
 Installer les dépendances :
