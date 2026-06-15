@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Award,
+  ChevronDown,
   CircleStop,
   Headphones,
   Loader2,
@@ -90,6 +91,7 @@ function SetupScreen({ game, onGame, setError }) {
   const [playlistUrl, setPlaylistUrl] = useState(game?.playlistUrl || "");
   const [selectedPresetPlaylistId, setSelectedPresetPlaylistId] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("Toutes");
+  const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [requestedTrackCount, setRequestedTrackCount] = useState(String(game?.requestedTrackCount || 10));
   const [players, setPlayers] = useState(
     game?.players?.length ? game.players.map((player) => player.name) : DEFAULT_PLAYERS
@@ -168,7 +170,7 @@ function SetupScreen({ game, onGame, setError }) {
       <section className="heroPanel setupPanel">
         <div className="eyebrow"><Headphones size={16} /> Studio game session</div>
         <h1>Composer la session</h1>
-        <p className="lead">Une experience de blind test precise, graphique et fluide. Colle une playlist Spotify ou Deezer publique pour composer la session.</p>
+        <p className="lead">Colle une playlist Spotify ou Deezer publique pour composer la session.</p>
 
         {!game?.spotifyConnected && (
           <a className="spotifyButton" href="/login">
@@ -188,49 +190,58 @@ function SetupScreen({ game, onGame, setError }) {
             <span className="fieldHelp">Les playlists Deezer publiques peuvent etre utilisees directement. Pour Spotify, seules les playlists accessibles avec votre compte fonctionnent.</span>
           </label>
 
-          <section className="presetSection" aria-labelledby="preset-playlists-title">
-            <div className="presetHeader">
-              <div>
+          <section className={cls("presetSection", presetMenuOpen && "open")} aria-labelledby="preset-playlists-title">
+            <button
+              type="button"
+              className="presetToggle"
+              onClick={() => setPresetMenuOpen((open) => !open)}
+              aria-expanded={presetMenuOpen}
+              aria-controls="preset-playlists-panel"
+            >
+              <span>
                 <span className="eyebrow">Playlists rapides</span>
-                <h2 id="preset-playlists-title">Choisir une playlist pré-enregistrée</h2>
+                <strong id="preset-playlists-title">Choisir une playlist pré-enregistrée</strong>
+                <small>{selectedPresetPlaylist ? `Sélectionnée : ${selectedPresetPlaylist.name}` : "Disney, Rap FR, années 2000, films et tubes"}</small>
+              </span>
+              <ChevronDown className="presetChevron" size={22} />
+            </button>
+
+            <div className="presetDropdown" id="preset-playlists-panel" aria-hidden={!presetMenuOpen}>
+              <div className="categoryFilters" aria-label="Filtrer les playlists pré-enregistrées">
+                {presetCategories.map((category) => (
+                  <button
+                    type="button"
+                    key={category}
+                    className={selectedCategory === category ? "active" : ""}
+                    onClick={() => setSelectedCategory(category)}
+                    disabled={busy || preparing}
+                  >
+                    {category}
+                  </button>
+                ))}
               </div>
-              {selectedPresetPlaylist && <span className="selectedPresetBadge">Sélectionnée : {selectedPresetPlaylist.name}</span>}
-            </div>
 
-            <div className="categoryFilters" aria-label="Filtrer les playlists pré-enregistrées">
-              {presetCategories.map((category) => (
-                <button
-                  type="button"
-                  key={category}
-                  className={selectedCategory === category ? "active" : ""}
-                  onClick={() => setSelectedCategory(category)}
-                  disabled={busy || preparing}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
+              <div className="presetGrid">
+                {filteredPresetPlaylists.map((playlist) => {
+                  const isSelected = selectedPresetPlaylistId === playlist.id;
 
-            <div className="presetGrid">
-              {filteredPresetPlaylists.map((playlist) => {
-                const isSelected = selectedPresetPlaylistId === playlist.id;
-
-                return (
-                  <article className={cls("presetCard", isSelected && "selected")} key={playlist.id}>
-                    <span className="presetCategory">{playlist.category}</span>
-                    <h3>{playlist.name}</h3>
-                    <p>{playlist.description}</p>
-                    <button
-                      type="button"
-                      className={isSelected ? "presetSelectedButton" : "presetUseButton"}
-                      onClick={() => selectPresetPlaylist(playlist)}
-                      disabled={busy || preparing}
-                    >
-                      {isSelected ? "Sélectionnée" : "Utiliser cette playlist"}
-                    </button>
-                  </article>
-                );
-              })}
+                  return (
+                    <article className={cls("presetCard", isSelected && "selected")} key={playlist.id}>
+                      <span className="presetCategory">{playlist.category}</span>
+                      <h3>{playlist.name}</h3>
+                      <p>{playlist.description}</p>
+                      <button
+                        type="button"
+                        className={isSelected ? "presetSelectedButton" : "presetUseButton"}
+                        onClick={() => selectPresetPlaylist(playlist)}
+                        disabled={busy || preparing}
+                      >
+                        {isSelected ? "Sélectionnée" : "Utiliser cette playlist"}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           </section>
 
@@ -243,13 +254,17 @@ function SetupScreen({ game, onGame, setError }) {
                 onClick={() => setRequestedTrackCount(String(count))}
                 disabled={busy || preparing}
               >
-                {count} manches
+                <span className="roundCount">{count}</span>
+                <span className="roundLabel">manches</span>
               </button>
             ))}
           </div>
 
           <div className="playersHeader">
-            <span>Joueurs</span>
+            <div className="playersTitle">
+              <span>Joueurs</span>
+              <small>{players.length} / 12 participants</small>
+            </div>
             <button type="button" className="iconText" onClick={addPlayer} disabled={players.length >= 12 || busy || preparing}>
               <UserPlus size={17} /> Ajouter
             </button>
