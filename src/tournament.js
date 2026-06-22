@@ -25,14 +25,26 @@ function cleanExpiredRooms() {
   for (const [code, room] of rooms) if (room.updatedAt < expiry) rooms.delete(code);
 }
 
-function buildChoices(tracks, correctIndex) {
+function buildChoices(tracks, correctIndex, previousChoices = []) {
   const correctTitle = tracks[correctIndex].title;
-  const distractors = shuffleArray(tracks
+  const previousTitles = new Set(previousChoices.map((choice) => choice.title));
+  const candidates = tracks
     .filter((_, index) => index !== correctIndex)
     .map((track) => track.title)
-    .filter((title, index, titles) => title !== correctTitle && titles.indexOf(title) === index))
-    .slice(0, 3);
-  return shuffleArray([correctTitle, ...distractors]).map((title, index) => ({ id: `choice-${correctIndex + 1}-${index + 1}`, title }));
+    .filter((title, index, titles) => title !== correctTitle && titles.indexOf(title) === index);
+  const freshCandidates = shuffleArray(candidates.filter((title) => !previousTitles.has(title)));
+  const fallbackCandidates = shuffleArray(candidates.filter((title) => !freshCandidates.includes(title)));
+  const distractors = [...freshCandidates, ...fallbackCandidates].slice(0, 3);
+
+  return shuffleArray([correctTitle, ...distractors]).map((title) => ({
+    id: `choice-${correctIndex + 1}-${crypto.randomUUID()}`,
+    title,
+  }));
+}
+
+function rerollRoundChoices(room, roundIndex) {
+  const previousChoices = roundIndex > 0 ? room.choices[roundIndex - 1] || [] : [];
+  room.choices[roundIndex] = buildChoices(room.tracks, roundIndex, previousChoices);
 }
 
 function getPlayer(room, playerToken) { return room.players.find((player) => player.token === playerToken) || null; }
@@ -159,7 +171,7 @@ async function createTournament({ playlistUrl, requestedTrackCount, hostName }) 
     playlistUrl,
     requestedTrackCount: count,
     tracks: prepared.playableTracks,
-    choices: prepared.playableTracks.map((_, index, tracks) => buildChoices(tracks, index)),
+    choices: Array(prepared.playableTracks.length).fill(null),
     preparationStats: prepared.stats,
     players: [{ id: crypto.randomUUID(), token: hostToken, name: cleanHostName, score: 0, answers: {}, isHost: true }],
     status: "lobby",
@@ -232,6 +244,7 @@ function startTournament(code, token) {
   const now = Date.now();
   room.status = "question";
   room.currentRoundIndex = 0;
+  rerollRoundChoices(room, room.currentRoundIndex);
   room.phaseStartedAt = now;
   room.phaseEndsAt = room.phaseStartedAt + QUESTION_DURATION_MS;
   room.updatedAt = now;
@@ -293,6 +306,7 @@ function nextTournamentRound(code, token) {
     room.phaseEndsAt = null;
   } else {
     room.status = "question";
+    rerollRoundChoices(room, room.currentRoundIndex);
     room.phaseStartedAt = room.updatedAt;
     room.phaseEndsAt = room.phaseStartedAt + QUESTION_DURATION_MS;
   }
