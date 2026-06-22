@@ -5,7 +5,7 @@ const { spotifyEnabled } = require("./config");
 const { detectPlaylistSource, extractDeezerPlaylistId, extractPlaylistId, parsePlayers, parseRequestedTrackCount } = require("./utils");
 const { spotifyAuthUrl, exchangeCodeForToken, getSpotifyPlaylistTracks } = require("./spotify");
 const { getDeezerPlaylistTracks, prepareDeezerPlayableTracks, preparePlayableTracks } = require("./deezer");
-const { createTournament, joinTournament, getTournament, startTournament, submitTournamentAnswer, serializeRoom } = require("./tournament");
+const { createTournament, joinTournament, getTournament, startTournament, submitTournamentAnswer, nextTournamentRound, serializeRoom } = require("./tournament");
 
 const reactIndexPath = path.resolve(process.cwd(), "client", "dist", "index.html");
 
@@ -410,7 +410,11 @@ function registerApiRoutes(app) {
 
   app.post("/api/tournaments", async (req, res) => {
     try {
-      const { room, token } = await createTournament({ playlistUrl: String(req.body.playlistUrl || "").trim(), requestedTrackCount: req.body.requestedTrackCount });
+      const { room, token } = await createTournament({
+        playlistUrl: String(req.body.playlistUrl || "").trim(),
+        requestedTrackCount: req.body.requestedTrackCount,
+        hostName: req.body.hostName,
+      });
       res.json({ ok: true, token, tournament: serializeRoom(room, "host", token) });
     } catch (error) {
       sendApiError(res, error.statusCode || 502, error.message || "Impossible de créer le tournoi.", error.details || null);
@@ -449,10 +453,21 @@ function registerApiRoutes(app) {
   app.post("/api/tournaments/:code/answer", (req, res) => {
     try {
       const token = String(req.body.token || "");
+      const { role } = getTournament(req.params.code, token);
       const room = submitTournamentAnswer(req.params.code, token, String(req.body.choiceId || ""));
-      res.json({ ok: true, tournament: serializeRoom(room, "player", token) });
+      res.json({ ok: true, tournament: serializeRoom(room, role, token) });
     } catch (error) {
       sendApiError(res, error.statusCode || 500, error.message || "Impossible d’enregistrer la réponse.");
+    }
+  });
+
+  app.post("/api/tournaments/:code/next", (req, res) => {
+    try {
+      const token = String(req.body.token || "");
+      const room = nextTournamentRound(req.params.code, token);
+      res.json({ ok: true, tournament: serializeRoom(room, "host", token) });
+    } catch (error) {
+      sendApiError(res, error.statusCode || 500, error.message || "Impossible de passer à la manche suivante.");
     }
   });
 }
