@@ -165,6 +165,7 @@ function SetupScreen({ game, onGame, setError, onTournament }) {
   const [presetMenuOpen, setPresetMenuOpen] = useState(false);
   const [requestedTrackCount, setRequestedTrackCount] = useState(String(game?.requestedTrackCount || 10));
   const [gameMode, setGameMode] = useState(game?.gameMode || "players");
+  const [hostName, setHostName] = useState("Hôte");
   const [players, setPlayers] = useState(
     game?.players?.length ? game.players.map((player) => player.name) : DEFAULT_PLAYERS
   );
@@ -253,7 +254,7 @@ function SetupScreen({ game, onGame, setError, onTournament }) {
       if (gameMode === "tournament") {
         const tournamentData = await api("/api/tournaments", {
           method: "POST",
-          body: JSON.stringify({ playlistUrl, requestedTrackCount }),
+          body: JSON.stringify({ playlistUrl, requestedTrackCount, hostName }),
         });
         onTournament(tournamentData.tournament, tournamentData.token);
         return;
@@ -529,8 +530,12 @@ function SetupScreen({ game, onGame, setError, onTournament }) {
           ) : (
             <div className="tournamentNote">
               <span className="eyebrow">Mode live</span>
-              <strong>Les joueurs rejoignent depuis leur téléphone.</strong>
-              <p>Après création, partage le code à 6 caractères. Chaque bonne réponse rapporte entre 500 et 1 000 points selon la vitesse.</p>
+              <strong>L'hôte joue aussi.</strong>
+              <p>Choisis ton pseudo, puis partage le code à 6 caractères. Chaque bonne réponse rapporte entre 500 et 1 000 points selon la vitesse.</p>
+              <label>
+                Ton pseudo d'hôte
+                <input value={hostName} onChange={(event) => setHostName(event.target.value)} maxLength={28} placeholder="Hôte" required />
+              </label>
             </div>
           )}
 
@@ -902,6 +907,22 @@ function TournamentScreen({ tournament, token, onTournament, onLeave, setError }
     }
   }
 
+  async function nextRound() {
+    setBusy(true);
+    setError("");
+    try {
+      const data = await api(`/api/tournaments/${tournament.code}/next`, {
+        method: "POST",
+        body: JSON.stringify({ token }),
+      });
+      onTournament(data.tournament, token);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (tournament.status === "lobby") {
     return (
       <main className="tournamentLobby">
@@ -911,7 +932,7 @@ function TournamentScreen({ tournament, token, onTournament, onLeave, setError }
           <h1 className="roomCode">{tournament.code}</h1>
           <p className="lead">{isHost ? "Partage ce code. La playlist est prête, tu peux lancer dès que tout le monde est là." : "Tu es connecté. Garde cet écran ouvert, la partie va démarrer."}</p>
           {isHost && (
-            <button className="primaryButton" onClick={start} disabled={busy || tournament.players.length === 0}>
+            <button className="primaryButton" onClick={start} disabled={busy}>
               {busy ? <Loader2 className="spin" size={18} /> : <Play size={18} />} Lancer le tournoi
             </button>
           )}
@@ -950,47 +971,53 @@ function TournamentScreen({ tournament, token, onTournament, onLeave, setError }
         <div className="roundHeader">
           <div>
             <span className="eyebrow"><Music2 size={16} /> Manche {tournament.currentRoundNumber} / {tournament.totalRounds}</span>
-            <h1>{revealing ? "Réponse" : isHost ? "Écoutez." : answer ? "Réponse envoyée" : "À toi de jouer."}</h1>
+            <h1>{revealing ? "Réponse" : answer ? "Réponse envoyée" : "À toi de jouer."}</h1>
           </div>
           <div className="timerBadge">{secondsLeft}s</div>
         </div>
 
-        {isHost ? (
+        {isHost && (
           <div className="tournamentHostStage">
             <button className={cls("disc", tournament.status === "question" && "discPlaying", revealing && "discReveal")} onClick={() => audioRef.current?.play()} aria-label="Relancer le son">
               {revealing && question?.albumCover ? <img src={question.albumCover} alt="Cover album" /> : <img className="vinylArt" src="/assets/vinyl-record.png" alt="Vinyle en lecture" />}
             </button>
             <audio ref={audioRef} src={question?.preview || ""} preload="auto" />
-            <p className="hostHint">Les joueurs répondent sur leur téléphone.</p>
-          </div>
-        ) : (
-          <div className="answerGrid">
-            {(question?.choices || []).map((choice, index) => {
-              const selected = answer?.choiceId === choice.id;
-              const correct = revealing && choice.title === question.correctTitle;
-              return (
-                <button
-                  key={choice.id}
-                  className={cls("answerChoice", `answerChoice${index + 1}`, selected && "selected", correct && "correct")}
-                  onClick={() => answerQuestion(choice.id)}
-                  disabled={busy || Boolean(answer) || revealing}
-                >
-                  <span>{index + 1}</span><strong>{choice.title}</strong>
-                </button>
-              );
-            })}
+            <p className="hostHint">Le son est diffusé ici. Tu peux répondre comme les autres joueurs.</p>
           </div>
         )}
+
+        <div className="answerGrid">
+          {(question?.choices || []).map((choice, index) => {
+            const selected = answer?.choiceId === choice.id;
+            const correct = revealing && choice.title === question.correctTitle;
+            return (
+              <button
+                key={choice.id}
+                className={cls("answerChoice", `answerChoice${index + 1}`, selected && "selected", correct && "correct")}
+                onClick={() => answerQuestion(choice.id)}
+                disabled={busy || Boolean(answer) || revealing}
+              >
+                <span>{index + 1}</span><strong>{choice.title}</strong>
+              </button>
+            );
+          })}
+        </div>
 
         {revealing && (
           <div className="tournamentReveal">
             <span>Bonne réponse</span>
             <strong>{question?.correctTitle}</strong>
             <small>{question?.artist}</small>
-            {!isHost && answer && <p className={answer.correct ? "answerSuccess" : "answerFailure"}>{answer.correct ? `+${answer.points} points` : "Mauvaise réponse"}</p>}
+            {answer && <p className={answer.correct ? "answerSuccess" : "answerFailure"}>{answer.correct ? `+${answer.points} points` : "Mauvaise réponse"}</p>}
           </div>
         )}
-        {!revealing && !isHost && answer && <div className="answerLocked">Réponse enregistrée</div>}
+        {!revealing && answer && <div className="answerLocked">Réponse enregistrée</div>}
+        {revealing && isHost && (
+          <button className="prepareButton" onClick={nextRound} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={18} /> : <SkipForward size={18} />}
+            {tournament.currentRoundIndex + 1 >= tournament.totalRounds ? "Voir les résultats" : "Manche suivante"}
+          </button>
+        )}
       </section>
       <Scoreboard entries={tournament.players} />
     </main>
