@@ -45,7 +45,16 @@ function getRanking(room) {
     const rank = player.score === previousScore ? previousRank : index + 1;
     previousScore = player.score;
     previousRank = rank;
-    return { id: player.id, name: player.name, score: player.score, rank };
+    const roundAnswer = player.answers[room.currentRoundIndex] || null;
+    return {
+      id: player.id,
+      name: player.name,
+      score: player.score,
+      rank,
+      roundPoints: roundAnswer?.points || 0,
+      roundCorrect: roundAnswer?.correct || false,
+      answered: Boolean(roundAnswer),
+    };
   });
 }
 
@@ -82,7 +91,7 @@ function serializeRoom(room, role, token) {
     player: player ? { id: player.id, name: player.name, score: player.score, answer } : null,
     question: track && room.status !== "lobby" ? {
       choices: room.choices[room.currentRoundIndex],
-      preview: role === "host" ? track.preview : undefined,
+      preview: track.preview,
       albumCover: revealAnswer ? track.albumCover : undefined,
       correctTitle: revealAnswer ? track.title : undefined,
       artist: revealAnswer ? track.artist : undefined,
