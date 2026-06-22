@@ -24,6 +24,13 @@ https://blind-test-n2cc.onrender.com/
   * 1 point pour l’artiste trouvé
 * Bouton “personne n’a trouvé”
 * Classement final des joueurs
+* Mode tournoi multijoueur :
+
+  * création d’un salon avec une playlist
+  * connexion des joueurs avec un code à 6 caractères
+  * quatre choix de titre par manche
+  * score de 500 à 1 000 points selon la rapidité
+  * classement synchronisé en direct
 * Comparaison textuelle préparée avec distance de Levenshtein
 
 ## Technologies utilisées
