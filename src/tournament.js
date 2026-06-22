@@ -6,7 +6,6 @@ const { getDeezerPlaylistTracks, prepareDeezerPlayableTracks, preparePlayableTra
 
 const rooms = new Map();
 const QUESTION_DURATION_MS = 10000;
-const REVEAL_DURATION_MS = 5000;
 const MAX_PLAYERS = 40;
 
 function createToken() { return crypto.randomBytes(18).toString("hex"); }
@@ -52,23 +51,10 @@ function getRanking(room) {
 
 function advanceRoom(room) {
   const now = Date.now();
-  while ((room.status === "question" || room.status === "reveal") && now >= room.phaseEndsAt) {
-    if (room.status === "question") {
-      room.status = "reveal";
-      room.phaseStartedAt = room.phaseEndsAt;
-      room.phaseEndsAt = room.phaseStartedAt + REVEAL_DURATION_MS;
-    } else {
-      room.currentRoundIndex += 1;
-      if (room.currentRoundIndex >= room.tracks.length) {
-        room.status = "results";
-        room.phaseStartedAt = null;
-        room.phaseEndsAt = null;
-      } else {
-        room.status = "question";
-        room.phaseStartedAt = room.phaseEndsAt;
-        room.phaseEndsAt = room.phaseStartedAt + QUESTION_DURATION_MS;
-      }
-    }
+  if (room.status === "question" && now >= room.phaseEndsAt) {
+    room.status = "reveal";
+    room.phaseStartedAt = room.phaseEndsAt;
+    room.phaseEndsAt = null;
     room.updatedAt = now;
   }
   return room;
@@ -77,7 +63,7 @@ function advanceRoom(room) {
 function serializeRoom(room, role, token) {
   advanceRoom(room);
   const track = room.tracks[room.currentRoundIndex] || null;
-  const player = role === "player" ? getPlayer(room, token) : null;
+  const player = getPlayer(room, token);
   const answer = player?.answers?.[room.currentRoundIndex] || null;
   const revealAnswer = room.status === "reveal" || room.status === "results";
   return {
@@ -150,21 +136,23 @@ async function prepareTracks(playlistUrl, requestedTrackCount) {
   return prepared;
 }
 
-async function createTournament({ playlistUrl, requestedTrackCount }) {
+async function createTournament({ playlistUrl, requestedTrackCount, hostName }) {
   cleanExpiredRooms();
   const count = parseRequestedTrackCount(requestedTrackCount);
   const prepared = await prepareTracks(playlistUrl, count);
   const code = createRoomCode();
   const now = Date.now();
+  const cleanHostName = String(hostName || "").trim().slice(0, 28) || "Hôte";
+  const hostToken = createToken();
   const room = {
     code,
-    hostToken: createToken(),
+    hostToken,
     playlistUrl,
     requestedTrackCount: count,
     tracks: prepared.playableTracks,
     choices: prepared.playableTracks.map((_, index, tracks) => buildChoices(tracks, index)),
     preparationStats: prepared.stats,
-    players: [],
+    players: [{ id: crypto.randomUUID(), token: hostToken, name: cleanHostName, score: 0, answers: {}, isHost: true }],
     status: "lobby",
     currentRoundIndex: 0,
     phaseStartedAt: null,
@@ -232,11 +220,6 @@ function startTournament(code, token) {
     error.statusCode = 409;
     throw error;
   }
-  if (room.players.length === 0) {
-    const error = new Error("Attends qu'au moins un joueur rejoigne la partie.");
-    error.statusCode = 400;
-    throw error;
-  }
   const now = Date.now();
   room.status = "question";
   room.currentRoundIndex = 0;
@@ -249,11 +232,6 @@ function startTournament(code, token) {
 function submitTournamentAnswer(code, token, choiceId) {
   const { room, role } = getTournament(code, token);
   advanceRoom(room);
-  if (role !== "player") {
-    const error = new Error("L'hôte ne participe pas aux réponses.");
-    error.statusCode = 403;
-    throw error;
-  }
   if (room.status !== "question") {
     const error = new Error("Les réponses sont fermées pour cette manche.");
     error.statusCode = 409;
@@ -283,4 +261,33 @@ function submitTournamentAnswer(code, token, choiceId) {
   return room;
 }
 
-module.exports = { createTournament, joinTournament, getTournament, startTournament, submitTournamentAnswer, serializeRoom };
+
+function nextTournamentRound(code, token) {
+  const { room, role } = getTournament(code, token);
+  advanceRoom(room);
+  if (role !== "host") {
+    const error = new Error("Seul l'hôte peut passer à la manche suivante.");
+    error.statusCode = 403;
+    throw error;
+  }
+  if (room.status !== "reveal") {
+    const error = new Error("Attends la fin de la manche avant de continuer.");
+    error.statusCode = 409;
+    throw error;
+  }
+
+  room.currentRoundIndex += 1;
+  room.updatedAt = Date.now();
+  if (room.currentRoundIndex >= room.tracks.length) {
+    room.status = "results";
+    room.phaseStartedAt = null;
+    room.phaseEndsAt = null;
+  } else {
+    room.status = "question";
+    room.phaseStartedAt = room.updatedAt;
+    room.phaseEndsAt = room.phaseStartedAt + QUESTION_DURATION_MS;
+  }
+  return room;
+}
+
+module.exports = { createTournament, joinTournament, getTournament, startTournament, submitTournamentAnswer, nextTournamentRound, serializeRoom };
