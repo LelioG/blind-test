@@ -12,6 +12,6 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "start": "node index.js",
-    "check": "npm run build && node --check index.js && node --check src/routes.js && node --check src/config.js && node --check src/state.js && node --check src/http.js && node --check src/utils.js && node --check src/spotify.js && node --check src/deezer.js"
+    "check": "npm run build && node --check index.js && node --check src/routes.js && node --check src/tournament.js && node --check src/config.js && node --check src/state.js && node --check src/http.js && node --check src/utils.js && node --check src/spotify.js && node --check src/deezer.js"
   }
 }
