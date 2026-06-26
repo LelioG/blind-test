@@ -44,11 +44,15 @@ function buildChoices(tracks, choiceTitles, correctIndex, previousChoices = []) 
   const correctTitle = tracks[correctIndex].title;
   const correctKey = normalizeAnswer(correctTitle);
   const previousTitleKeys = new Set(previousChoices.map((choice) => normalizeAnswer(choice.title)));
+  const playedTitleKeys = new Set(tracks.slice(0, correctIndex).map((track) => normalizeAnswer(track.title)));
   const fallbackTitles = uniqueTitlesFromTracks(tracks);
   const candidates = uniqueTitlesFromTracks([
     ...choiceTitles.map((title) => ({ title })),
     ...fallbackTitles.map((title) => ({ title })),
-  ]).filter((title) => normalizeAnswer(title) !== correctKey);
+  ]).filter((title) => {
+    const key = normalizeAnswer(title);
+    return key !== correctKey && !playedTitleKeys.has(key);
+  });
   const freshCandidates = shuffleArray(candidates.filter((title) => !previousTitleKeys.has(normalizeAnswer(title))));
   const fallbackCandidates = shuffleArray(candidates.filter((title) => !freshCandidates.includes(title)));
   const distractors = [...freshCandidates, ...fallbackCandidates].slice(0, 3);
