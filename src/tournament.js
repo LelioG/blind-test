@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const { state } = require("./state");
-const { detectPlaylistSource, extractDeezerPlaylistId, extractPlaylistId, parseRequestedTrackCount, shuffleArray } = require("./utils");
+const { detectPlaylistSource, extractDeezerPlaylistId, extractPlaylistId, normalizeAnswer, parseRequestedTrackCount, shuffleArray } = require("./utils");
 const { getSpotifyPlaylistTracks } = require("./spotify");
 const { getDeezerPlaylistTracks, prepareDeezerPlayableTracks, preparePlayableTracks } = require("./deezer");
 
@@ -25,14 +25,31 @@ function cleanExpiredRooms() {
   for (const [code, room] of rooms) if (room.updatedAt < expiry) rooms.delete(code);
 }
 
-function buildChoices(tracks, correctIndex, previousChoices = []) {
+function uniqueTitlesFromTracks(tracks) {
+  const seen = new Set();
+  const titles = [];
+
+  for (const track of tracks) {
+    const title = String(track.title || track.spotifyTitle || "").trim();
+    const key = normalizeAnswer(title);
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    titles.push(title);
+  }
+
+  return titles;
+}
+
+function buildChoices(tracks, choiceTitles, correctIndex, previousChoices = []) {
   const correctTitle = tracks[correctIndex].title;
-  const previousTitles = new Set(previousChoices.map((choice) => choice.title));
-  const candidates = tracks
-    .filter((_, index) => index !== correctIndex)
-    .map((track) => track.title)
-    .filter((title, index, titles) => title !== correctTitle && titles.indexOf(title) === index);
-  const freshCandidates = shuffleArray(candidates.filter((title) => !previousTitles.has(title)));
+  const correctKey = normalizeAnswer(correctTitle);
+  const previousTitleKeys = new Set(previousChoices.map((choice) => normalizeAnswer(choice.title)));
+  const fallbackTitles = uniqueTitlesFromTracks(tracks);
+  const candidates = uniqueTitlesFromTracks([
+    ...choiceTitles.map((title) => ({ title })),
+    ...fallbackTitles.map((title) => ({ title })),
+  ]).filter((title) => normalizeAnswer(title) !== correctKey);
+  const freshCandidates = shuffleArray(candidates.filter((title) => !previousTitleKeys.has(normalizeAnswer(title))));
   const fallbackCandidates = shuffleArray(candidates.filter((title) => !freshCandidates.includes(title)));
   const distractors = [...freshCandidates, ...fallbackCandidates].slice(0, 3);
 
@@ -44,7 +61,7 @@ function buildChoices(tracks, correctIndex, previousChoices = []) {
 
 function rerollRoundChoices(room, roundIndex) {
   const previousChoices = roundIndex > 0 ? room.choices[roundIndex - 1] || [] : [];
-  room.choices[roundIndex] = buildChoices(room.tracks, roundIndex, previousChoices);
+  room.choices[roundIndex] = buildChoices(room.tracks, room.choiceTitles || [], roundIndex, previousChoices);
 }
 
 function getPlayer(room, playerToken) { return room.players.find((player) => player.token === playerToken) || null; }
@@ -128,7 +145,9 @@ async function prepareTracks(playlistUrl, requestedTrackCount) {
       throw error;
     }
     const tracks = await getSpotifyPlaylistTracks(playlistId);
+    const choiceTitles = uniqueTitlesFromTracks(tracks);
     prepared = await preparePlayableTracks(tracks, Math.min(requestedTrackCount, tracks.length));
+    prepared.choiceTitles = choiceTitles;
   } else if (source === "deezer") {
     if (!extractDeezerPlaylistId(playlistUrl)) {
       const error = new Error("Lien Deezer invalide. Utilise un lien contenant /playlist/ID.");
@@ -136,7 +155,9 @@ async function prepareTracks(playlistUrl, requestedTrackCount) {
       throw error;
     }
     const tracks = await getDeezerPlaylistTracks(playlistUrl);
+    const choiceTitles = uniqueTitlesFromTracks(tracks);
     prepared = prepareDeezerPlayableTracks(tracks, requestedTrackCount);
+    prepared.choiceTitles = choiceTitles;
   } else {
     const error = new Error("Colle un lien de playlist Spotify ou Deezer valide.");
     error.statusCode = 400;
@@ -154,6 +175,11 @@ async function prepareTracks(playlistUrl, requestedTrackCount) {
     error.statusCode = 400;
     throw error;
   }
+  prepared.choiceTitles = uniqueTitlesFromTracks([
+    ...prepared.choiceTitles.map((title) => ({ title })),
+    ...prepared.playableTracks,
+  ]);
+  prepared.stats.choiceTitleCount = prepared.choiceTitles.length;
   return prepared;
 }
 
@@ -171,6 +197,7 @@ async function createTournament({ playlistUrl, requestedTrackCount, hostName }) 
     playlistUrl,
     requestedTrackCount: count,
     tracks: prepared.playableTracks,
+    choiceTitles: prepared.choiceTitles,
     choices: Array(prepared.playableTracks.length).fill(null),
     preparationStats: prepared.stats,
     players: [{ id: crypto.randomUUID(), token: hostToken, name: cleanHostName, score: 0, answers: {}, isHost: true }],
